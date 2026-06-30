@@ -2,22 +2,11 @@
 
 A zero-dependency, browser-based editor for drawing, annotating, and exporting free body diagrams.
 
-## Install
+## Use the app
 
-Download the newest installer from the
-[GitHub Releases page](https://github.com/Mindersteve/freebody-diagram-studio/releases/latest):
-
-- **macOS:** choose the `.dmg` matching Apple Silicon (`arm64`) or Intel (`x64`).
-- **Windows:** choose the `.exe` installer. A portable `.exe` is also available.
-- **Linux:** choose the `.AppImage`, or the `.deb` for Debian/Ubuntu.
-
-The packages are currently unsigned. On macOS, control-click the app and choose
-**Open** the first time. On Windows, choose **More info → Run anyway** if
-SmartScreen appears.
-
-You can also use the
-[web version](https://mindersteve.github.io/freebody-diagram-studio/) without
-installing anything.
+Open **[Freebody Diagram Studio](https://mindersteve.github.io/freebody-diagram-studio/)**.
+There is nothing to install, and it works on macOS, Windows, Linux, tablets, and
+modern mobile browsers.
 
 ## Run from source
 
@@ -29,24 +18,6 @@ npm start
 ```
 
 Open [http://localhost:4173](http://localhost:4173).
-
-For the desktop development build:
-
-```bash
-npm run desktop
-```
-
-## Create installers
-
-```bash
-npm run dist:mac
-npm run dist:win
-npm run dist:linux
-```
-
-Each command should be run on its matching operating system. Pushing a version
-tag such as `v1.0.0` runs the GitHub Actions release workflow and attaches every
-platform installer to a GitHub release automatically.
 
 ## Features
 
