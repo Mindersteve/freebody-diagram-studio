@@ -1,0 +1,69 @@
+name: Build desktop installers
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --generate-notes --title "Freebody Diagram Studio ${GITHUB_REF_NAME}"
+
+  build:
+    needs: [create-release]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-13
+            command: npm run dist:mac -- --x64
+            label: macOS-Intel
+          - os: macos-14
+            command: npm run dist:mac -- --arm64
+            label: macOS-Apple-Silicon
+          - os: windows-latest
+            command: npm run dist:win -- --x64
+            label: Windows
+          - os: ubuntu-latest
+            command: npm run dist:linux -- --x64
+            label: Linux
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Build ${{ matrix.label }}
+        run: ${{ matrix.command }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.label }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.deb
+      - name: Add installers to release
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          shopt -s nullglob
+          files=(dist/*.dmg dist/*.zip dist/*.exe dist/*.AppImage dist/*.deb)
+          gh release upload "${GITHUB_REF_NAME}" "${files[@]}" --repo "${GITHUB_REPOSITORY}" --clobber

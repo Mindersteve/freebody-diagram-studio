@@ -1,0 +1,59 @@
+{
+  "name": "freebody-diagram-studio",
+  "version": "1.0.0",
+  "description": "A focused, vector-based free body diagram editor.",
+  "author": "Mindersteve",
+  "license": "MIT",
+  "main": "electron-main.js",
+  "scripts": {
+    "start": "node server.js",
+    "desktop": "electron .",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux"
+  },
+  "devDependencies": {
+    "electron": "^43.0.0",
+    "electron-builder": "^26.0.12"
+  },
+  "build": {
+    "appId": "io.github.mindersteve.freebody",
+    "productName": "Freebody Diagram Studio",
+    "artifactName": "Freebody-Diagram-Studio-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "app.js",
+      "electron-main.js",
+      "index.html",
+      "styles.css"
+    ],
+    "mac": {
+      "category": "public.app-category.education",
+      "identity": null,
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "linux": {
+      "category": "Education",
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}
