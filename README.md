@@ -2,11 +2,15 @@
 
 A zero-dependency, browser-based editor for drawing, annotating, and exporting free body diagrams.
 
-## Use the app
+## Download and run
 
-Open **[Freebody Diagram Studio](https://mindersteve.github.io/freebody-diagram-studio/)**.
-There is nothing to install, and it works on macOS, Windows, Linux, tablets, and
-modern mobile browsers.
+1. Open the **[latest release](https://github.com/Mindersteve/freebody-diagram-studio/releases/latest)**.
+2. Download `Freebody-Diagram-Studio-1.0.0.zip`.
+3. Extract the ZIP.
+4. Double-click `index.html`.
+
+The app opens locally in your default browser on macOS, Windows, or Linux.
+There is nothing to install and no internet connection is required.
 
 ## Run from source
 

@@ -1,0 +1,6 @@
+FREEBODY DIAGRAM STUDIO
+
+Double-click index.html to open the app in your default web browser.
+
+The app runs entirely on your computer. No installation or internet connection
+is required.
