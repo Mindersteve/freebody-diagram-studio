@@ -85,6 +85,11 @@ svg { display: block; }
 #diagram:not([data-tool="select"]) { cursor: crosshair; }
 .diagram-label { cursor: grab; }
 .diagram-label:active { cursor: grabbing; }
+.body-shape-picker { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin: -2px 8px 8px; padding: 6px; border: 1px solid var(--soft-line); border-radius: 8px; background: #eeede8; }
+.body-shape-picker button { height: 27px; padding: 0; border: 1px solid transparent; border-radius: 5px; background: transparent; color: #757770; display: grid; place-items: center; }
+.body-shape-picker button:hover { background: white; color: var(--ink); }
+.body-shape-picker button.active { background: white; color: var(--accent); border-color: #cfd8ef; box-shadow: 0 1px 3px #2221; }
+.body-shape-picker svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 .anchor-dot { cursor: pointer; transition: stroke-width .12s, r .12s; }
 .anchor-dot:hover { stroke: #ef6c57; stroke-width: 4px; }
 .dimension-hit { cursor: move; pointer-events: stroke; }
@@ -95,6 +100,10 @@ svg { display: block; }
 .force-handle { cursor: grab; }
 .force-handle:hover { fill: #2563eb; stroke-width: 3px; }
 .force-handle:active { cursor: grabbing; }
+.torque-hit { cursor: move; pointer-events: stroke; }
+.torque-handle { cursor: grab; }
+.torque-handle:hover { fill: #2563eb; stroke-width: 3px; }
+.torque-handle:active { cursor: grabbing; }
 .axes-hit { cursor: move; pointer-events: stroke; }
 .marquee-selection { fill: rgba(37,99,235,.08); stroke: #2563eb; stroke-width: 1.5; stroke-dasharray: 6 4; }
 .multi-summary { margin: 0 0 11px; color: #62645e; font-size: 11px; }
@@ -138,6 +147,9 @@ input[type="color"] { width: 30px; height: 30px; padding: 3px; border: 1px solid
 .equation-head h3 { margin: 0; }
 .equation-head button { border: 0; background: transparent; color: #777973; font-size: 9px; font-weight: 700; padding: 3px 5px; border-radius: 4px; }
 .equation-head button:hover { background: #e9e8e3; color: var(--ink); }
+.equation-reference { display: block; margin: 10px 0 8px; }
+.equation-reference span { display: block; color: #777973; font-size: 9px; margin-bottom: 5px; }
+.equation-reference select { width: 100%; height: 31px; }
 .equation-row { padding: 8px 9px; background: white; border: 1px solid var(--soft-line); border-radius: 7px; margin-top: 6px; }
 .equation-row small { display: block; color: #999b95; font: 8px "DM Mono"; text-transform: uppercase; letter-spacing: .08em; margin-bottom: 4px; }
 .equation-expression { color: #30312e; overflow-x: auto; overflow-y: hidden; padding: 3px 1px 2px; }

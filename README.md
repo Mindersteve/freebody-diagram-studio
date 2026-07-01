@@ -5,7 +5,7 @@ A zero-dependency, browser-based editor for drawing, annotating, and exporting f
 ## Download and run
 
 1. Open the **[latest release](https://github.com/Mindersteve/freebody-diagram-studio/releases/latest)**.
-2. Download `Freebody-Diagram-Studio-1.0.0.zip`.
+2. Download `Freebody-Diagram-Studio-1.1.0.zip`.
 3. Extract the ZIP.
 4. Double-click `index.html`.
 
@@ -25,7 +25,8 @@ Open [http://localhost:4173](http://localhost:4173).
 
 ## Features
 
-- Rigid bodies, force vectors, inclined surfaces, dimensions, coordinate axes, and text
+- Rectangle, rounded, elliptical, triangular, hexagonal, and freehand rigid bodies
+- Force vectors, clockwise/counterclockwise torque arrows, inclined surfaces, dimensions, coordinate axes, and text
 - Drag-to-draw editing with grid snapping
 - Independently draggable labels and one-click removable anchor dots
 - LaTeX-style labels including Greek symbols, subscripts, superscripts, vectors, and fractions
@@ -36,7 +37,8 @@ Open [http://localhost:4173](http://localhost:4173).
 - Marquee multi-selection with group movement, deletion, duplication, and layer highlighting
 - New, Save, and Open project workflows using portable `.fbd.json` files
 - Spring and damper connectors with stiffness, damping, rest-length, and velocity properties
-- Automatically derived 2D force balances, constitutive laws, and reduced equations of motion
+- Automatically derived 2D force balances and moment balances about a selectable origin, labeled point, or body center
+- Constitutive laws and reduced equations of motion
 - Inspector controls for geometry, labels, colors, line width, and force magnitude
 - Undo, redo, duplicate, delete, presets, autosave, and keyboard shortcuts
 - Clean PNG (2×) and editable SVG export

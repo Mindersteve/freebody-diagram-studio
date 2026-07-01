@@ -10,6 +10,7 @@ const icons = {
   body: '<rect x="4" y="4" width="16" height="16" rx="1"/>',
   point: '<circle cx="12" cy="12" r="5"/><path d="M12 3v3m0 12v3M3 12h3m12 0h3"/>',
   force: '<path d="M4 18 19 5m-7 1 7-1-1 7"/>',
+  torque: '<path d="M18.5 8A8 8 0 1 0 19 15m-4-8 4 1 1-4"/>',
   spring: '<path d="M2 12h4l2-5 3 10 3-10 3 10 2-5h3"/>',
   damper: '<path d="M2 12h5m0-5v10h7V7H7m7 5h4m0-5v10m0-5h4"/>',
   surface: '<path d="M3 18 20 7v11z"/>',
@@ -20,7 +21,7 @@ const icons = {
 
 let state = {
   tool: "select", objects: [], selectedId: null, selectedIds: [], zoom: 1, snap: true, grid: true,
-  background: "#ffffff", gridSize: 20, trimExport: true, history: [], future: [], drag: null, dirty: false
+  background: "#ffffff", gridSize: 20, trimExport: true, bodyShape:"rectangle", momentReference:"auto", history: [], future: [], drag: null, dirty: false
 };
 
 const uid = () => "o" + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
@@ -38,6 +39,7 @@ const FONT_DEFAULTS = {
   body: {fontFamily:"Georgia, serif",fontSize:26,fontWeight:"400",italic:true},
   point: {fontFamily:"Manrope, sans-serif",fontSize:18,fontWeight:"600",italic:false},
   force: {fontFamily:"Manrope, sans-serif",fontSize:22,fontWeight:"700",italic:false},
+  torque: {fontFamily:"Manrope, sans-serif",fontSize:20,fontWeight:"700",italic:true},
   spring: {fontFamily:"Manrope, sans-serif",fontSize:17,fontWeight:"600",italic:false},
   damper: {fontFamily:"Manrope, sans-serif",fontSize:17,fontWeight:"600",italic:false},
   surface: {fontFamily:"Georgia, serif",fontSize:18,fontWeight:"400",italic:false},
@@ -50,13 +52,13 @@ function make(type, props = {}) {
   const typeFont = FONT_DEFAULTS[type] || {};
   const base = {
     id: uid(), type, x: 200, y: 180, w: 160, h: 100, rotation: 0,
-    label: type === "body" ? "m" : type === "force" ? "F" : type === "spring" ? "k" : type === "damper" ? "c" : type === "point" ? "A" : type === "surface" ? "\\theta" : type === "text" ? "Annotation" : "",
-    color: type === "force" ? "#2563eb" : "#20211f", strokeWidth: type === "force" ? 5 : 3,
-    magnitude: 100, showMagnitude: false, showDot: ["body", "force"].includes(type),
-    labelDX: 0, labelDY: 0, radius: 7, autoMeasure: type==="dimension",
+    label: type === "body" ? "m" : type === "force" ? "F" : type === "torque" ? "M" : type === "spring" ? "k" : type === "damper" ? "c" : type === "point" ? "A" : type === "surface" ? "\\theta" : type === "text" ? "Annotation" : "",
+    color: ["force","torque"].includes(type) ? "#2563eb" : "#20211f", strokeWidth: ["force","torque"].includes(type) ? 5 : 3,
+    magnitude: 100, showMagnitude: false, showDot: ["body", "force", "torque"].includes(type),
+    labelDX: 0, labelDY: 0, radius: type==="torque"?50:7, autoMeasure: type==="dimension",
     showSurfaceLabel:type==="surface", showAngle:type==="surface",
     scale: 0.01, unit: "m", precision: "2", stiffness:100, restLength:100,
-    damping:10, velocity:0, mass:10, ...typeFont
+    damping:10, velocity:0, mass:10, direction:type==="torque"?"ccw":undefined, shape:type==="body"?"rectangle":undefined, ...typeFont
   };
   return {...base, ...props};
 }
@@ -73,7 +75,7 @@ function initialDiagram() {
 }
 
 function serialize() {
-  return JSON.stringify({objects: state.objects, background: state.background, gridSize: state.gridSize, trimExport:state.trimExport, title: $("#documentTitle").value});
+  return JSON.stringify({objects: state.objects, background: state.background, gridSize: state.gridSize, trimExport:state.trimExport, momentReference:state.momentReference, title: $("#documentTitle").value});
 }
 
 function projectData() {
@@ -85,6 +87,7 @@ function projectData() {
     background:state.background,
     gridSize:state.gridSize,
     trimExport:state.trimExport,
+    momentReference:state.momentReference,
     savedAt:new Date().toISOString()
   };
 }
@@ -112,15 +115,17 @@ function restore(raw) {
     labelDY: 0,
     ...(FONT_DEFAULTS[o.type] || {}),
     ...o,
-    ...(o.type==="body" ? {mass:o.mass??10} : {}),
+    ...(o.type==="body" ? {mass:o.mass??10,shape:o.shape||"rectangle"} : {}),
+    ...(o.type==="torque" ? {radius:o.radius??50,direction:o.direction||"ccw",magnitude:o.magnitude??100} : {}),
     ...(o.type==="spring" ? {stiffness:o.stiffness??100,restLength:o.restLength??100} : {}),
     ...(o.type==="damper" ? {damping:o.damping??10,velocity:o.velocity??0} : {}),
     ...(o.type==="surface" ? {label:o.label||"\\theta",showSurfaceLabel:o.showSurfaceLabel!==false,showAngle:o.showAngle!==false} : {}),
-    showDot: ["body", "force"].includes(o.type) ? o.showDot !== false : o.showDot
+    showDot: ["body", "force", "torque"].includes(o.type) ? o.showDot !== false : o.showDot
   }));
   state.background = data.background || "#ffffff";
   state.gridSize = data.gridSize || 20;
   state.trimExport = data.trimExport !== false;
+  state.momentReference = data.momentReference || "auto";
   if (data.title) $("#documentTitle").value = data.title;
   $("#backgroundColor").value = state.background;
   $("#gridSize").value = state.gridSize;
@@ -217,12 +222,52 @@ function connectorGeometry(o) {
   return {x2,y2,dx,dy,len,ux:dx/len,uy:dy/len,nx:-dy/len,ny:dx/len};
 }
 
+function bodyShapeElement(o) {
+  const common={fill:"#ffffff",stroke:o.color,"stroke-width":o.strokeWidth,filter:"url(#softShadow)","stroke-linejoin":"round"};
+  if(o.shape==="ellipse")return el("ellipse",{cx:o.x+o.w/2,cy:o.y+o.h/2,rx:o.w/2,ry:o.h/2,...common});
+  if(o.shape==="triangle")return el("polygon",{points:`${o.x+o.w/2},${o.y} ${o.x+o.w},${o.y+o.h} ${o.x},${o.y+o.h}`,...common});
+  if(o.shape==="hexagon")return el("polygon",{points:`${o.x+o.w*.25},${o.y} ${o.x+o.w*.75},${o.y} ${o.x+o.w},${o.y+o.h/2} ${o.x+o.w*.75},${o.y+o.h} ${o.x+o.w*.25},${o.y+o.h} ${o.x},${o.y+o.h/2}`,...common});
+  if(o.shape==="freehand"&&o.points?.length){
+    const pts=o.points;
+    let d=`M ${o.x+pts[0].x} ${o.y+pts[0].y}`;
+    for(let i=1;i<pts.length;i++){
+      const previous=pts[i-1],current=pts[i],mx=o.x+(previous.x+current.x)/2,my=o.y+(previous.y+current.y)/2;
+      d+=` Q ${o.x+previous.x} ${o.y+previous.y} ${mx} ${my}`;
+    }
+    const last=pts[pts.length-1];
+    d+=` Q ${o.x+last.x} ${o.y+last.y} ${o.x+pts[0].x} ${o.y+pts[0].y} Z`;
+    return el("path",{d,...common});
+  }
+  return el("rect",{x:o.x,y:o.y,width:o.w,height:o.h,rx:o.shape==="rounded"?Math.min(22,o.w/4,o.h/4):3,...common});
+}
+
+function normalizeFreehandBody(o) {
+  if(!o.points||o.points.length<3){
+    o.points=[{x:0,y:15},{x:12,y:2},{x:45,y:0},{x:62,y:14},{x:58,y:42},{x:35,y:55},{x:8,y:48}];
+  }
+  const minX=Math.min(...o.points.map(p=>p.x)),minY=Math.min(...o.points.map(p=>p.y));
+  const maxX=Math.max(...o.points.map(p=>p.x)),maxY=Math.max(...o.points.map(p=>p.y));
+  o.x+=minX;o.y+=minY;
+  o.points=o.points.map(p=>({x:p.x-minX,y:p.y-minY}));
+  o.w=Math.max(20,maxX-minX);o.h=Math.max(20,maxY-minY);
+}
+
+function torqueGeometry(o) {
+  const radius=Math.max(18,Number(o.radius)||50),rotation=Number(o.rotation)||0;
+  const clockwise=o.direction==="cw",start=(clockwise?35:325)+rotation,end=(clockwise?325:35)+rotation;
+  const point=angle=>{
+    const radians=angle*Math.PI/180;
+    return {x:o.x+Math.cos(radians)*radius,y:o.y+Math.sin(radians)*radius};
+  };
+  return {radius,rotation,start:point(start),end:point(end),sweep:clockwise?1:0,handle:point(rotation)};
+}
+
 function renderObject(o) {
   const g = el("g", {"data-id": o.id, class: "diagram-object"});
   if (o.type === "body") {
     const cx = o.x + o.w/2, cy = o.y + o.h/2;
     g.setAttribute("transform", `rotate(${o.rotation} ${cx} ${cy})`);
-    g.append(el("rect", {x:o.x, y:o.y, width:o.w, height:o.h, rx:3, fill:"#ffffff", stroke:o.color, "stroke-width":o.strokeWidth, filter:"url(#softShadow)"}));
+    g.append(bodyShapeElement(o));
     const t = mathText({x:cx+(o.labelDX||0), y:cy+8+(o.labelDY||0), "text-anchor":"middle", fill:o.color, "font-size":o.fontSize||26, "font-family":o.fontFamily||"Georgia, serif", "font-weight":o.fontWeight||"400", "font-style":o.italic?"italic":"normal", class:"diagram-label", "data-label-for":o.id},o.label);
     g.append(t);
     if (o.showDot !== false) g.append(el("circle", {cx, cy, r:5, fill:o.color, class:"anchor-dot", "data-dot-for":o.id}));
@@ -233,6 +278,13 @@ function renderObject(o) {
     const dx=o.x2-o.x, dy=o.y2-o.y, len=Math.hypot(dx,dy)||1, nx=-dy/len, ny=dx/len;
     const tx=o.x2-dx/len*18+nx*14+(o.labelDX||0), ty=o.y2-dy/len*18+ny*14+(o.labelDY||0);
     const t = mathText({x:tx, y:ty, fill:o.color, "font-size":o.fontSize||22, "font-weight":o.fontWeight||"700", "font-family":o.fontFamily||"Manrope, sans-serif", "font-style":o.italic?"italic":"normal", "paint-order":"stroke", stroke:"#fff", "stroke-width":5, "stroke-linejoin":"round", class:"diagram-label", "data-label-for":o.id},o.label + (o.showMagnitude ? ` = ${o.magnitude} N` : ""));
+    g.append(t);
+  } else if (o.type === "torque") {
+    const q=torqueGeometry(o),d=`M ${q.start.x} ${q.start.y} A ${q.radius} ${q.radius} 0 1 ${q.sweep} ${q.end.x} ${q.end.y}`;
+    g.append(el("path",{d,fill:"none",stroke:"transparent","stroke-width":24,class:"torque-hit"}));
+    g.append(el("path",{d,fill:"none",stroke:o.color,"stroke-width":o.strokeWidth,"stroke-linecap":"round","marker-end":`url(#arrow-${colorName(o.color)})`}));
+    if(o.showDot!==false)g.append(el("circle",{cx:o.x,cy:o.y,r:5.5,fill:"#fff",stroke:o.color,"stroke-width":3,class:"anchor-dot","data-dot-for":o.id}));
+    const t=mathText({x:o.x+(o.labelDX||0),y:o.y+7+(o.labelDY||0),fill:o.color,"text-anchor":"middle","font-size":o.fontSize||20,"font-weight":o.fontWeight||"700","font-family":o.fontFamily||"Manrope, sans-serif","font-style":o.italic===false?"normal":"italic","paint-order":"stroke",stroke:"#fff","stroke-width":5,"stroke-linejoin":"round",class:"diagram-label","data-label-for":o.id},o.label+(o.showMagnitude?` = ${o.magnitude} N·m`:""));
     g.append(t);
   } else if (o.type === "spring") {
     const q=connectorGeometry(o),lead=.12*q.len,body=.76*q.len,points=[[o.x,o.y],[o.x+q.ux*lead,o.y+q.uy*lead]];
@@ -309,6 +361,7 @@ function bounds(o) {
     return {x:Math.min(o.x,x2)-8,y:Math.min(o.y,y2)-8,w:Math.abs(x2-o.x)+16,h:Math.abs(y2-o.y)+16};
   }
   if(o.type==="point"){const r=o.radius||7;return{x:o.x-r-8,y:o.y-r-8,w:r*2+16,h:r*2+16};}
+  if(o.type==="torque"){const r=Math.max(18,Number(o.radius)||50);return{x:o.x-r-10,y:o.y-r-10,w:r*2+20,h:r*2+20};}
   if (o.type==="axes") return {x:o.x-8,y:o.y-o.h-8,w:o.w+16,h:o.h+16};
   return {x:o.x-8,y:o.y-8,w:(o.w||120)+16,h:(o.h||30)+16};
 }
@@ -325,6 +378,13 @@ function renderSelection() {
     return;
   }
   const o=selected(); if(!o) return;
+  if(o.type==="torque"){
+    const q=torqueGeometry(o);
+    selectionLayer.append(el("circle",{cx:o.x,cy:o.y,r:q.radius+7,fill:"none",stroke:"#2563eb","stroke-width":1.5,"stroke-dasharray":"5 4"}));
+    selectionLayer.append(el("line",{x1:o.x,y1:o.y,x2:q.handle.x,y2:q.handle.y,stroke:"#2563eb","stroke-width":1.5,"stroke-dasharray":"3 3","pointer-events":"none"}));
+    selectionLayer.append(el("circle",{cx:q.handle.x,cy:q.handle.y,r:8,fill:"#fff",stroke:"#2563eb","stroke-width":2,class:"torque-handle","data-torque-handle":"radius","data-torque-id":o.id}));
+    return;
+  }
   if(["spring","damper"].includes(o.type)){
     const q=connectorGeometry(o);
     selectionLayer.append(el("line",{x1:o.x,y1:o.y,x2:q.x2,y2:q.y2,stroke:"#2563eb","stroke-width":12,opacity:.12,"pointer-events":"none"}));
@@ -376,18 +436,59 @@ function equationHTML(value) {
   return `<span class="math-formula" role="math" aria-label="${safe(accessible)}">${content}</span>`;
 }
 
+function renderMomentReferenceOptions() {
+  const select=$("#momentReference");
+  const candidates=state.objects.filter(o=>["point","body"].includes(o.type));
+  select.innerHTML=[
+    `<option value="auto">Automatic body center</option>`,
+    `<option value="origin">Diagram origin O</option>`,
+    ...candidates.map(o=>{
+      const name=latexSource(o.label||(o.type==="point"?"Point":"Body"));
+      return `<option value="${safe(o.id)}">${o.type==="point"?"Point":"Center of body"} ${safe(name)}</option>`;
+    })
+  ].join("");
+  if(state.momentReference!=="auto"&&state.momentReference!=="origin"&&!byId(state.momentReference))state.momentReference="auto";
+  select.value=state.momentReference;
+}
+
+function momentReferencePoint(bodies) {
+  if(state.momentReference==="origin")return{x:0,y:650,name:"O",formulaLabel:"O"};
+  const chosen=byId(state.momentReference);
+  if(chosen?.type==="point"){
+    const label=latexSource(chosen.label||"P");
+    const formulaLabel=latexParts(label).map(part=>part.text).join("");
+    return{x:chosen.x,y:chosen.y,name:label,formulaLabel};
+  }
+  if(chosen?.type==="body"){
+    const label=latexSource(chosen.label||"m");
+    const formulaLabel=`G${latexParts(label).map(part=>part.text).join("")}`;
+    return{x:chosen.x+chosen.w/2,y:chosen.y+chosen.h/2,name:`center of ${label}`,formulaLabel};
+  }
+  if(bodies[0]){
+    const label=latexSource(bodies[0].label||"m");
+    const formulaLabel=`G${latexParts(label).map(part=>part.text).join("")}`;
+    return{x:bodies[0].x+bodies[0].w/2,y:bodies[0].y+bodies[0].h/2,name:`center of ${label}`,formulaLabel};
+  }
+  return{x:0,y:650,name:"O",formulaLabel:"O"};
+}
+
 function governingEquations() {
   const forces=state.objects.filter(o=>o.type==="force");
+  const torques=state.objects.filter(o=>o.type==="torque");
   const springs=state.objects.filter(o=>o.type==="spring");
   const dampers=state.objects.filter(o=>o.type==="damper");
   const bodies=state.objects.filter(o=>o.type==="body");
-  const xTerms=[],yTerms=[];
+  const xTerms=[],yTerms=[],momentTerms=[];
+  const reference=momentReferencePoint(bodies);
   forces.forEach(o=>{
     const dx=o.x2-o.x,py=o.y-o.y2,len=Math.hypot(dx,py)||1,ux=dx/len,uy=py/len;
     const angle=Math.abs(Math.round(Math.atan2(py,dx)*180/Math.PI)),name=latexSource(o.label||"F");
     if(Math.abs(ux)>.01)xTerms.push({sign:Math.sign(ux),text:Math.abs(ux)>.995?name:`${name} cos(${angle}°)`});
     if(Math.abs(uy)>.01)yTerms.push({sign:Math.sign(uy),text:Math.abs(uy)>.995?name:`${name} sin(${angle}°)`});
+    const rx=o.x-reference.x,ry=reference.y-o.y,cross=rx*uy-ry*ux;
+    if(Math.abs(cross)>1)momentTerms.push({sign:Math.sign(cross),text:`${name} d_{${name},${reference.formulaLabel}}`});
   });
+  torques.forEach(o=>momentTerms.push({sign:o.direction==="cw"?-1:1,text:latexSource(o.label||"M")}));
   [...springs,...dampers].forEach(o=>{
     const q=connectorGeometry(o),ux=q.ux,uy=-q.uy,name=latexSource(o.label||(o.type==="spring"?"k":"c"));
     const magnitude=o.type==="spring"?`${name} ΔL`:`${name} v_{rel}`;
@@ -397,9 +498,11 @@ function governingEquations() {
   const mass=bodies.length?bodies.map(o=>latexSource(o.label||"m")).join(" + "):"m";
   const rows=[
     {name:"x force balance",formula:`${signedTerms(xTerms)} = (${mass}) a_x`},
-    {name:"y force balance",formula:`${signedTerms(yTerms)} = (${mass}) a_y`}
+    {name:"y force balance",formula:`${signedTerms(yTerms)} = (${mass}) a_y`},
+    {name:`moment balance about ${reference.name}`,formula:`${signedTerms(momentTerms)} = I_{${reference.formulaLabel}} α`}
   ];
   bodies.forEach(o=>rows.push({name:`mass ${latexSource(o.label||"m")}`,formula:`${latexSource(o.label||"m")} = ${o.mass} kg`}));
+  torques.forEach(o=>rows.push({name:`torque ${latexSource(o.label||"M")}`,formula:`${latexSource(o.label||"M")} = ${o.magnitude} N·m   (${o.direction==="cw"?"CW":"CCW"})`}));
   springs.forEach(o=>rows.push({name:`spring ${latexSource(o.label||"k")}`,formula:`F_{${latexSource(o.label||"s")}} = ${latexSource(o.label||"k")} (L − L_0),   k = ${o.stiffness} N/m`}));
   dampers.forEach(o=>rows.push({name:`damper ${latexSource(o.label||"c")}`,formula:`F_{${latexSource(o.label||"d")}} = ${latexSource(o.label||"c")} v_{rel},   c = ${o.damping} N·s/m`}));
   if(springs.length||dampers.length){
@@ -411,9 +514,10 @@ function governingEquations() {
 }
 
 function renderEquations() {
+  renderMomentReferenceOptions();
   const rows=governingEquations();
   equationText=rows.map(r=>`${r.name}: ${r.formula}`).join("\n");
-  $("#equationOutput").innerHTML=state.objects.length?rows.map(r=>`<div class="equation-row"><small>${safe(r.name)}</small><div class="equation-expression">${equationHTML(r.formula)}</div></div>`).join(""):`<p class="equation-empty">Add a body, forces, springs, or dampers to derive equations.</p>`;
+  $("#equationOutput").innerHTML=state.objects.length?rows.map(r=>`<div class="equation-row"><small>${safe(r.name)}</small><div class="equation-expression">${equationHTML(r.formula)}</div></div>`).join(""):`<p class="equation-empty">Add a body, forces, torques, springs, or dampers to derive equations.</p>`;
 }
 
 function render() {
@@ -450,31 +554,32 @@ function renderInspector() {
     else if(p==="w" && ["force","surface","dimension","spring","damper"].includes(o.type)) input.value=Math.round(Math.abs((o.x2??o.x)-o.x));
     else if(p==="h" && ["force","surface","dimension","spring","damper"].includes(o.type)) input.value=Math.round(Math.abs((o.y2??o.y)-o.y));
     else input.value=o[p]??"";
-    input.disabled=(["w","h"].includes(p) && ["text","point"].includes(o.type));
+    input.disabled=(["w","h"].includes(p) && ["text","point","torque"].includes(o.type));
   });
   $("#forceSection").classList.toggle("hidden",o.type!=="force");
+  $("#torqueSection").classList.toggle("hidden",o.type!=="torque");
   $("#bodySection").classList.toggle("hidden",o.type!=="body");
   $("#springSection").classList.toggle("hidden",o.type!=="spring");
   $("#damperSection").classList.toggle("hidden",o.type!=="damper");
   $("#dimensionSection").classList.toggle("hidden",o.type!=="dimension");
   $("#surfaceSection").classList.toggle("hidden",o.type!=="surface");
   $("#pointSection").classList.toggle("hidden",o.type!=="point");
-  $("#dotField").classList.toggle("hidden",!["body","force"].includes(o.type));
+  $("#dotField").classList.toggle("hidden",!["body","force","torque"].includes(o.type));
   $("#labelField").classList.toggle("hidden",o.type==="axes");
   $("#latexHelp").classList.toggle("hidden",o.type==="axes");
 }
 
-function toPoint(evt) {
+function toPoint(evt,useSnap=true) {
   const pt=svg.createSVGPoint(); pt.x=evt.clientX; pt.y=evt.clientY;
   const p=pt.matrixTransform(svg.getScreenCTM().inverse());
-  return {x:snap(p.x),y:snap(p.y)};
+  return useSnap?{x:snap(p.x),y:snap(p.y)}:{x:Math.round(p.x),y:Math.round(p.y)};
 }
 
 function chooseTool(tool) {
   state.tool=tool; svg.dataset.tool=tool;
   $$(".tool[data-tool]").forEach(b=>b.classList.toggle("active",b.dataset.tool===tool));
-  const hints={select:"Click an object or drag across empty space to select several",force:"Drag from the force origin to its direction",spring:"Drag between two attachment points",damper:"Drag between two attachment points",body:"Drag to draw a rigid body",point:"Click to place a labeled point",surface:"Drag along the contact surface",dimension:"Drag between features — endpoints snap automatically",axes:"Click to place coordinate axes",text:"Click to add an annotation"};
-  $("#canvasHint").textContent=hints[tool];
+  const hints={select:"Click an object or drag across empty space to select several",force:"Drag from the force origin to its direction",torque:"Drag outward from the moment center",spring:"Drag between two attachment points",damper:"Drag between two attachment points",body:state.bodyShape==="freehand"?"Draw a closed freehand body outline":"Drag to draw the selected body shape",point:"Click to place a labeled point",surface:"Drag along the contact surface",dimension:"Drag between features — endpoints snap automatically",axes:"Click to place coordinate axes",text:"Click to add an annotation"};
+  $("#canvasHint").textContent=hints[tool]||"";
 }
 
 function hitId(evt) {
@@ -501,8 +606,18 @@ function smartSnapPoint(p,ignoreId=null) {
 }
 
 svg.addEventListener("pointerdown", evt=>{
-  const p=toPoint(evt);
+  const p=toPoint(evt,state.tool!=="body"||state.bodyShape!=="freehand");
   if(state.tool==="select") {
+    const torqueHandle=evt.target.closest?.("[data-torque-handle]");
+    if(torqueHandle){
+      const id=torqueHandle.dataset.torqueId,o=byId(id);
+      if(o){
+        setSelection([id]);
+        state.drag={mode:"torque-radius",start:p,original:JSON.parse(JSON.stringify(o)),changed:false};
+        svg.setPointerCapture(evt.pointerId);
+      }
+      return;
+    }
     const connectorHandle=evt.target.closest?.("[data-connector-handle]");
     if(connectorHandle){
       const id=connectorHandle.dataset.connectorId,o=byId(id);
@@ -567,7 +682,11 @@ svg.addEventListener("pointerdown", evt=>{
   snapshot();
   let o;
   const start=["dimension","spring","damper"].includes(state.tool)?smartSnapPoint(p):p;
-  if(state.tool==="body") o=make("body",{x:p.x,y:p.y,w:0,h:0});
+  if(state.tool==="body") {
+    o=make("body",{x:p.x,y:p.y,w:0,h:0,shape:state.bodyShape});
+    if(state.bodyShape==="freehand")o.points=[{x:0,y:0}];
+  }
+  else if(state.tool==="torque")o=make("torque",{x:p.x,y:p.y,radius:20,rotation:0});
   else if(["force","surface","dimension","spring","damper"].includes(state.tool)) o=make(state.tool,{x:start.x,y:start.y,x2:start.x,y2:start.y,label:state.tool==="dimension"?"L":undefined});
   else if(state.tool==="point"){o=make("point",{x:p.x,y:p.y,w:0,h:0});state.objects.push(o);setSelection([o.id]);chooseTool("select");render();saveLocal();return;}
   else if(state.tool==="axes") o=make("axes",{x:p.x,y:p.y,w:90,h:90});
@@ -576,12 +695,12 @@ svg.addEventListener("pointerdown", evt=>{
     if(label) { o=make("text",{x:p.x,y:p.y,label,w:Math.max(80,label.length*10),h:20}); state.objects.push(o); setSelection([o.id]); }
     chooseTool("select"); render(); return;
   }
-  if(o) {state.objects.push(o);setSelection([o.id]);state.drag={mode:"create",start:p,object:o};svg.setPointerCapture(evt.pointerId);render();}
+  if(o) {state.objects.push(o);setSelection([o.id]);state.drag={mode:o.type==="body"&&o.shape==="freehand"?"create-freehand":"create",start:p,object:o};svg.setPointerCapture(evt.pointerId);render();}
 });
 
 svg.addEventListener("pointermove",evt=>{
   if(!state.drag)return;
-  const p=toPoint(evt),d=state.drag;
+  const d=state.drag,p=toPoint(evt,d.mode!=="create-freehand");
   if(d.mode==="marquee"){
     d.current=p;
     const x=Math.min(d.start.x,p.x),y=Math.min(d.start.y,p.y),w=Math.abs(p.x-d.start.x),h=Math.abs(p.y-d.start.y);
@@ -595,7 +714,17 @@ svg.addEventListener("pointermove",evt=>{
     scene.replaceChildren(...state.objects.map(renderObject));renderSelection();return;
   }
   const o=selected();if(!o)return;
-  if(d.mode==="move") {
+  if(d.mode==="create-freehand") {
+    const last=o.points[o.points.length-1],next={x:p.x-o.x,y:p.y-o.y};
+    if(Math.hypot(next.x-last.x,next.y-last.y)>=3)o.points.push(next);
+    const xs=o.points.map(point=>point.x),ys=o.points.map(point=>point.y);
+    o.w=Math.max(20,Math.max(...xs)-Math.min(...xs));o.h=Math.max(20,Math.max(...ys)-Math.min(...ys));
+  } else if(d.mode==="torque-radius") {
+    const dx=p.x-o.x,dy=p.y-o.y;
+    o.radius=Math.max(18,Math.round(Math.hypot(dx,dy)));
+    o.rotation=Math.round(Math.atan2(dy,dx)*180/Math.PI);
+    d.changed=true;
+  } else if(d.mode==="move") {
     const dx=p.x-d.start.x,dy=p.y-d.start.y,orig=d.original;
     o.x=orig.x+dx;o.y=orig.y+dy;
     if(orig.x2!=null){o.x2=orig.x2+dx;o.y2=orig.y2+dy;}
@@ -629,6 +758,11 @@ svg.addEventListener("pointermove",evt=>{
       o.x=Math.min(d.start.x,p.x);o.y=Math.min(d.start.y,p.y);
       o.w=Math.max(20,Math.abs(p.x-d.start.x));o.h=Math.max(20,Math.abs(p.y-d.start.y));
     }
+    else if(o.type==="torque"){
+      const dx=p.x-d.start.x,dy=p.y-d.start.y;
+      o.radius=Math.max(18,Math.round(Math.hypot(dx,dy)));
+      o.rotation=Math.round(Math.atan2(dy,dx)*180/Math.PI);
+    }
     else if(["force","surface","dimension","spring","damper"].includes(o.type)){
       const end=["dimension","spring","damper"].includes(o.type)?smartSnapPoint(p,o.id):p;
       o.x2=end.x;o.y2=end.y;
@@ -655,7 +789,8 @@ svg.addEventListener("pointerup",()=>{
     }
     state.drag=null;saveLocal();render();return;
   }
-  if(["move","label","dimension-start","dimension-end","force-start","force-end","connector-start","connector-end"].includes(state.drag.mode)&&state.drag.changed) {
+  if(state.drag.mode==="create-freehand")normalizeFreehandBody(selected());
+  if(["move","label","torque-radius","dimension-start","dimension-end","force-start","force-end","connector-start","connector-end"].includes(state.drag.mode)&&state.drag.changed) {
     const current=JSON.parse(JSON.stringify(selected()));
     Object.assign(selected(),state.drag.original);
     snapshot();
@@ -677,6 +812,11 @@ function deleteSelected() {
 }
 
 $$(".tool[data-tool]").forEach(b=>b.addEventListener("click",()=>chooseTool(b.dataset.tool)));
+$$("[data-body-shape]").forEach(button=>button.addEventListener("click",()=>{
+  state.bodyShape=button.dataset.bodyShape;
+  $$("[data-body-shape]").forEach(item=>item.classList.toggle("active",item===button));
+  chooseTool("body");
+}));
 $("#deleteBtn").addEventListener("click",deleteSelected);
 $("#undoBtn").addEventListener("click",undo);$("#redoBtn").addEventListener("click",redo);
 $("#clearBtn").addEventListener("click",()=>{if(confirm("Clear every object from this diagram?")){snapshot();state.objects=[];setSelection([]);render();}});
@@ -690,6 +830,18 @@ function applyInspectorValue(input) {
   if(input.type==="number")v=Number(v);
   if(p==="w"&&["force","surface","dimension","spring","damper"].includes(o.type))o.x2=o.x+v;
   else if(p==="h"&&["force","surface","dimension","spring","damper"].includes(o.type))o.y2=o.y+v;
+  else if(o.type==="body"&&o.shape==="freehand"&&p==="w"){
+    const ratio=v/(o.w||1);o.points=o.points?.map(point=>({...point,x:point.x*ratio}));o.w=v;
+  }
+  else if(o.type==="body"&&o.shape==="freehand"&&p==="h"){
+    const ratio=v/(o.h||1);o.points=o.points?.map(point=>({...point,y:point.y*ratio}));o.h=v;
+  }
+  else if(o.type==="body"&&p==="shape"){
+    o.shape=v;
+    if(v==="freehand"&&!o.points){
+      o.points=[{x:0,y:o.h*.25},{x:o.w*.2,y:0},{x:o.w*.72,y:o.h*.05},{x:o.w,y:o.h*.35},{x:o.w*.88,y:o.h},{x:o.w*.25,y:o.h*.9}];
+    }
+  }
   else o[p]=v;
 }
 
@@ -720,6 +872,7 @@ $$("[data-color]").forEach(b=>b.addEventListener("click",()=>{const o=selected()
 
 $("#gridToggle").addEventListener("change",e=>{state.grid=e.target.checked;render();});
 $("#snapToggle").addEventListener("change",e=>state.snap=e.target.checked);
+$("#momentReference").addEventListener("change",e=>{snapshot();state.momentReference=e.target.value;render();saveLocal();});
 $("#backgroundColor").addEventListener("input",e=>{state.background=e.target.value;render();saveLocal();});
 $("#gridSize").addEventListener("change",e=>{state.gridSize=Math.max(10,Math.min(100,+e.target.value));saveLocal();});
 $("#documentTitle").addEventListener("input",()=>{$("#saveStatus").textContent="Saving…";clearTimeout(snapshot.timer);snapshot.timer=setTimeout(saveLocal,500);});
@@ -746,7 +899,7 @@ $("#trimExport").addEventListener("change",e=>{state.trimExport=e.target.checked
 function exportSVGData() {
   const clone=svg.cloneNode(true);
   clone.querySelector("#selectionLayer").remove();clone.querySelector("#draftLayer").remove();
-  clone.querySelectorAll(".force-hit,.dimension-hit,.axes-hit,.connector-hit").forEach(node=>node.remove());
+  clone.querySelectorAll(".force-hit,.torque-hit,.dimension-hit,.axes-hit,.connector-hit").forEach(node=>node.remove());
   const bg=clone.querySelector("#gridBackground");bg.setAttribute("fill",state.background);bg.removeAttribute("style");
   let x=0,y=0,width=1000,height=650;
   if(state.trimExport && state.objects.length){
@@ -775,7 +928,7 @@ function saveProjectFile() {
 
 function newDiagram() {
   snapshot();
-  state.objects=[];state.background="#ffffff";state.gridSize=20;state.trimExport=true;
+  state.objects=[];state.background="#ffffff";state.gridSize=20;state.trimExport=true;state.momentReference="auto";
   setSelection([]);state.history=[];state.future=[];
   $("#documentTitle").value="Untitled diagram";
   $("#backgroundColor").value=state.background;$("#gridSize").value=state.gridSize;
@@ -848,7 +1001,12 @@ document.addEventListener("keydown",e=>{
   if((e.metaKey||e.ctrlKey)&&key==="z"){e.preventDefault();e.shiftKey?redo():undo();return;}
   if((e.metaKey||e.ctrlKey)&&key==="d"){e.preventDefault();const ids=selectionIds();if(ids.length){snapshot();const copies=ids.map(id=>{const c=JSON.parse(JSON.stringify(byId(id)));c.id=uid();c.x+=20;c.y+=20;if(c.x2!=null){c.x2+=20;c.y2+=20;}return c;});state.objects.push(...copies);setSelection(copies.map(c=>c.id));render();}return;}
   if(["delete","backspace"].includes(key)){e.preventDefault();deleteSelected();return;}
-  const map={v:"select",f:"force",k:"spring",c:"damper",b:"body",p:"point",s:"surface",d:"dimension",a:"axes",t:"text"};
+  if(key==="h"){
+    state.bodyShape="freehand";
+    $$("[data-body-shape]").forEach(item=>item.classList.toggle("active",item.dataset.bodyShape==="freehand"));
+    chooseTool("body");return;
+  }
+  const map={v:"select",f:"force",m:"torque",k:"spring",c:"damper",b:"body",p:"point",s:"surface",d:"dimension",a:"axes",t:"text"};
   if(map[key])chooseTool(map[key]);
   if(key==="escape"){setSelection([]);chooseTool("select");render();}
 });
